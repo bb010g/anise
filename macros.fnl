@@ -1,4 +1,4 @@
-;; anise-macros.fnl
+;; anise/macros.fnl
 ;; Utility macros for Fennel.
 
 ;; Copyright 2018 bb010g <bb010g@gmail.com>

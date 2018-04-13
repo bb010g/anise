@@ -1,11 +1,11 @@
-;; anise.fnl
+;; anise/init.fnl
 ;; Utility functions for Fennel.
 
 ;; Copyright 2018 bb010g <bb010g@gmail.com>
 ;; This code is licensed under either of the MIT (/LICENSE-MIT) or Apache v2.0
 ;; (/LICENSE-APACHE) licenses, at your option.
 
-(require-macros :anise-macros)
+(require-macros :anise.macros)
 
 (local anise {})
 
@@ -23,24 +23,29 @@
 (defn anise.pack [...]
   (anise.push [] ...))
 
+; drops nils in the tables being concatenated
 (set anise.pushcat (luaexpr "function (arr, ...)\
   local i = #arr\
   for a = 1, select('#', ...) do\
     local arg = select(a, ...)\
     if type(arg) == 'table' then\
       for j = 1, #arg do\
-        i = 1 + i\
-        arr[i] = arg[j]\
+        local v = arg[j]\
+        if v ~= nil then i = 1 + i; arr[i] = v end\
       end\
     end\
   end\
   return arr, i\
 end"))
 
+; drops nils in the tables being concatenated
 (defn anise.concat [...]
   (anise.pushcat [] ...))
 
 ;; dictionary tables
+
+(defn anise.clone [t]
+  (each/table [k v (pairs t)] [k v]))
 
 (defn anise.keys [t]
   (each/array [k _ (pairs t)] k))
@@ -57,24 +62,81 @@ end"))
 (defn anise.dict_len [t]
   (each/sum [_ _ (pairs t)] 1))
 
+;; iterators
+
+(defn anise.collect_keys [iter]
+  (each/arr [k _ iter] k))
+
+(defn anise.collect_assocs [iter]
+  (each/arr [k v iter] [k v]))
+
+(defn anise.collect_table [iter]
+  (each/table [k v iter] [k v]))
+
+(defn anise.collect_vals [iter]
+  (each/arr [_ v iter] v))
+
 ;; math
+
+(defn anise.clamp [x min max]
+  (math.max min (math.min x max)))
 
 (defn anise.divmod [x y]
   (local q (math.floor (/ x y)))
   (values q (- x (* y q))))
 
-;; strings
+;; modules
 
-(defn anise.pretty_float [x]
-  (if (= (% x 1) 0)
-    (tostring (math.floor x))
-    (tostring x)))
+; implementation based on lume.hotswap, licensed under MIT
+; https://github.com/rxi/lume
+(defn anise.hotswap [modname]
+  (local oldglobal (anise.clone _G))
+  (local updated {})
+  (defn update [old new]
+    (if (. updated old)
+      (values)
+      (let [oldmt (getmetatable old)
+            newmt (getmetatable new)]
+        (tset updated old true)
+        (when (and oldmt newmt)
+          (update oldmt newmt))
+        (each [k v (pairs new)]
+          (if (= (type v) :table)
+            (update (. old k) v)
+            (tset old k v))))))
+  (var err nil)
+  (defn onerror [e]
+    (each [k (pairs _G)]
+      (tset _G k (. oldglobal k)))
+    (set err (anise.trim e)))
+  (var (ok oldmod) (pcall require modname))
+  (set oldmod (and-or ok oldmod nil))
+  (xpcall
+    (fn []
+      (tset package.loaded modname nil)
+      (local newmod (require modname))
+      (when (= (type oldmod) :table)
+        (update oldmod newmod))
+      (each [k v (pairs oldglobal)]
+        (when (and (~= v (. _G k)) (= (type v) :table))
+          (update v (. _G k))
+          (tset _G k v))))
+    onerror)
+  (tset package.loaded modname oldmod)
+  (if err (values nil err) oldmod))
+
+;; strings
 
 (defn anise.gfind [str pattern init plain]
   (defn iter [s i]
     (local (start end) (string.find s pattern i plain))
     (values end start))
   (values iter str 1))
+
+(defn anise.pretty_float [x]
+  (if (= (% x 1) 0)
+    (tostring (math.floor x))
+    (tostring x)))
 
 (defn anise.split_str [s pat plain]
   (local pat (or pat (and-or plain "%s+" " ")))
@@ -86,8 +148,13 @@ end"))
   (tset arr (+ 1 i) (string.sub last_end -1))
   arr)
 
-; (defn anise.trim [s pat plain]
-  ; nil)
+(defn anise.trim [s pat]
+  (local pat (or pat "%s*"))
+  (str.match s (f-str "^{pat}(.-){pat}$")))
+
+(defn anise.trim_left [s pat]
+  (local pat (or pat "%s+"))
+  (str.match s (f-str "^{pat}(.*)$")))
 
 ;; custom data structures
 
