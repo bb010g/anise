@@ -65,16 +65,16 @@ end"))
 ;; iterators
 
 (defn anise.collect_keys [iter]
-  (each/arr [k _ iter] k))
+  (each/array [k _ iter] k))
 
 (defn anise.collect_assocs [iter]
-  (each/arr [k v iter] [k v]))
+  (each/array [k v iter] [k v]))
 
 (defn anise.collect_table [iter]
   (each/table [k v iter] [k v]))
 
 (defn anise.collect_vals [iter]
-  (each/arr [_ v iter] v))
+  (each/array [_ v iter] v))
 
 ;; math
 
