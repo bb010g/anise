@@ -150,11 +150,11 @@ end"))
 
 (defn anise.trim [s pat]
   (local pat (or pat "%s*"))
-  (str.match s (f-str "^{pat}(.-){pat}$")))
+  (string.match s (f-str "^{pat}(.-){pat}$")))
 
 (defn anise.trim_left [s pat]
   (local pat (or pat "%s+"))
-  (str.match s (f-str "^{pat}(.*)$")))
+  (string.match s (f-str "^{pat}(.*)$")))
 
 ;; custom data structures
 
@@ -260,5 +260,5 @@ end"))
   } anise.set_meta))
 
 ;; end
- 
+
 anise
