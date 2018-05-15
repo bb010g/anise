@@ -5,11 +5,17 @@
 ;; This code is licensed under either of the MIT (/LICENSE-MIT) or Apache v2.0
 ;; (/LICENSE-APACHE) licenses, at your option.
 
+(require-macros :anise.core.macros)
+(require* (rename anise.core anise))
+
 (local mac {})
+(local unpack (or unpack table.unpack))
+
+(anise.merge_into mac (. fennel.macroLoaded :anise.core.macros))
 
 ; string macros
 
-(defn mac.f-str [input ...]
+(fn mac.f-str [input ...]
   (when (~= (type input) :string)
     (error "f-str: must be called with a string"))
   (local cat (list (sym "..")))
@@ -35,7 +41,7 @@
         (if (= state :expr)
             (do
               (set state :string)
-              (table.insert cat (sym (string.char (table.unpack bytes))))
+              (table.insert cat (sym (string.char (unpack bytes))))
               (set bytes []))
             (= state :string)
             (set state :escape-right)
@@ -47,7 +53,7 @@
             (do
               (assert (> (# args) 0) "f-str: Missing argument")
               (set state :string)
-              (table.insert cat (string.char (table.unpack bytes)))
+              (table.insert cat (string.char (unpack bytes)))
               (set bytes [])
               (table.insert cat (table.remove args 1)))
             ; else (unreachable)
@@ -58,7 +64,7 @@
             (= state :expr-first) ; starting expression
             (do
               (set state :expr)
-              (table.insert cat (string.char (table.unpack bytes)))
+              (table.insert cat (string.char (unpack bytes)))
               (set bytes [b]))
             (= state :escape-right)
             (error "f-str: unmatched right curly must be followed by another")
@@ -66,7 +72,7 @@
             (error (.. "f-str: unknown state " state)))))
   (if (= state :string)
       (when (> (# input) 0)
-        (table.insert cat (string.char (table.unpack bytes))))
+        (table.insert cat (string.char (unpack bytes))))
       (or (= state :expr) (= state :expr-first))
       (error "f-str: unmatched right curly")
       (= state :escape-right)
@@ -77,35 +83,36 @@
 
 ; nil-aware macros
 
-(defn mac.set? [lhs rhs]
-  (local check (list (sym :and)))
+(fn mac.set? [lhs rhs]
+  (local checks [])
   (if (sym? lhs)
-      (table.insert check (list (sym :=) (sym :nil) lhs))
+      (table.insert checks (` (= nil (!` lhs))))
       (list? lhs)
       (each [_ symb (ipairs lhs)]
         (assert (sym? symb) "set?: destructuring not supported")
-        (table.insert check (list (sym :=) (sym :nil) symb)))
+        (table.insert checks (` (= nil (!` symb)))))
       ; else
       (error "set?: destructuring not supported"))
-  (list (sym :when) check (list (sym :tset) lhs rhs)))
+  (` (when (and (!@ checks))
+    (set (!` lhs) (!` rhs)))))
 
 ; not safe against side-effects, needs gensym or once
-(defn mac.tset? [table key val]
-  (list (sym :when) (list (sym :=) (sym :nil) (list (sym :.) table key))
-    (list (sym :tset) table key val)))
+(fn mac.tset? [table key val]
+  (` (when (= nil (. (!` table) (!` key)))
+    (tset (!` table) (!` key) (!` val)))))
 
 ; iterator comprehensions
 
-(defn gen-iter-comp [i c]
+(fn gen-iter-comp [i c]
   (fn [...]
     (local (c-wrap data body) (c.wrap [...]))
     (local (i-wrap body) (i body))
     (c-wrap (i-wrap (c.body data body)))))
 
-(defn mk-iter-comp [mac iter i comp c]
+(fn mk-iter-comp [mac iter i comp c]
   (local name (.. i :/ c))
   (tset mac name (gen-iter-comp (. iter i) (. comp c))))
-(defn mk-iter-comps [mac iter is comp cs]
+(fn mk-iter-comps [mac iter is comp cs]
   (each [_ c (ipairs cs)]
     (each [_ i (ipairs is)]
       (mk-iter-comp mac iter i comp c))))
@@ -113,17 +120,17 @@
 (local iter {
   :each (fn [body]
     (local [bindings & body] body)
-    (defn wrap [...]
+    (fn wrap [...]
       (list (sym :each) bindings ...))
     (values wrap body))
   :for (fn [body]
     (local [bindings & body] body)
-    (defn wrap [...]
+    (fn wrap [...]
       (list (sym :for) bindings ...))
     (values wrap body))
   :while (fn [body]
     (local [condition & body] body)
-    (defn wrap [...]
+    (fn wrap [...]
       (list (sym :while) condition ...))
     (values wrap body))
 })
@@ -135,12 +142,12 @@
   :wrap (fn [body]
     (local coll (sym :__comp_array_coll))
     (local i (sym :__comp_array_i))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body (list (sym :values) coll i))
-      (list (sym :let) [coll []]
-        (list (sym :var) i 0)
-        (table.unpack body)))
+      (` (let [(!` coll) []]
+        (var (!` i) 0)
+        (!@ body)
+        (values (!` coll) (!` i)))))
     (values wrap [coll i] body))
   :body (fn [data body]
     (local [coll i] data)
@@ -148,18 +155,18 @@
     (tset body body-len
       (list (sym :tset) coll i (. body body-len)))
     (values
-      (list (sym :set) i (list (sym :+) 1 i))
-      (table.unpack body)))
+      (` (set (!` i) (+ 1 (!` i))))
+      (unpack body)))
 })
 
 (set comp.table {
   :wrap (fn [body]
     (local coll (sym :__comp_table_coll))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body coll)
-      (list (sym :let) [coll {}]
-        (table.unpack body)))
+      (` (let [(!` coll) {}]
+        (!@ body)
+        (!` coll))))
     (values wrap coll body))
   :body (fn [coll body]
     (local body-len (# body))
@@ -168,19 +175,19 @@
             "last body expression must be [k v]")
     (tset body body-len
       (list (sym :tset) coll (. val 1) (. val 2)))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.and {
   :wrap (fn [body]
     (local exp (sym :__comp_and_exp))
     (local tmp (sym :__comp_and_tmp))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body exp)
-      (list (sym :do)
-        (list (sym :var) exp true)
-        (table.unpack body)))
+      (` (do
+        (var (!` exp) true)
+        (!@ body)
+        (!` exp))))
     (values wrap [exp tmp] body))
   :body (fn [data body]
     (local [exp tmp] data)
@@ -190,19 +197,19 @@
       (list (sym :local) tmp (. body body-len)))
     (tset body (+ 1 body-len) (list (sym :luastatement)
       (.. "if not " tmp_str " then " exp_str " = " tmp_str "; break; end")))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.or {
   :wrap (fn [body]
     (local exp (sym :__comp_or_exp))
     (local tmp (sym :__comp_or_tmp))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body exp)
-      (list (sym :do)
-        (list (sym :var) exp false)
-        (table.unpack body)))
+      (` (do
+        (var (!` exp) false)
+        (!@ body)
+        (!` exp))))
     (values wrap [exp tmp] body))
   :body (fn [data body]
     (local [exp tmp] data)
@@ -212,52 +219,52 @@
       (list (sym :local) tmp (. body body-len)))
     (tset body (+ 1 body-len) (list (sym :luastatement)
       (.. "if " tmp_str " then " exp_str " = " tmp_str "; break; end")))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.sum {
   :wrap (fn [body]
     (local exp (sym :__comp_sum_exp))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body exp)
-      (list (sym :do)
-        (list (sym :var) exp 0)
-        (table.unpack body)))
+      (` (do
+        (var (!` exp) 0)
+        (!@ body)
+        (!` exp))))
     (values wrap exp body))
   :body (fn [exp body]
     (local body-len (# body))
     (tset body body-len
       (list (sym :set) exp (list (sym :+) exp (. body body-len))))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.product {
   :wrap (fn [body]
     (local exp (sym :__comp_product_exp))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body exp)
-      (list (sym :do)
-        (list (sym :var) exp 1)
-        (table.unpack body)))
+      (` (do
+        (var (!` exp) 1)
+        (!@ body)
+        (!` exp))))
     (values wrap exp body))
   :body (fn [exp body]
     (local body-len (# body))
     (tset body body-len
       (list (sym :set) exp (list (sym :*) exp (. body body-len))))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.first {
   :wrap (fn [body]
     (local res (sym :__comp_first_res))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body res)
-      (list (sym :do)
-        (list (sym :var) res (sym :nil))
-        (table.unpack body)))
+      (` (do
+        (var (!` res) nil)
+        (!@ body)
+        (!` res))))
     (values wrap res body))
   :body (fn [res body]
     (local res_str (. res 1))
@@ -265,25 +272,25 @@
     (tset body body-len
       (list (sym :set) res (. body body-len)))
     (tset body (+ 1 body-len) (list (sym :luastatement) :break))
-    (table.unpack body))
+    (unpack body))
 })
 
 (set comp.last {
   :wrap (fn [body]
     (local res (sym :__comp_last_res))
-    (defn wrap [...]
+    (fn wrap [...]
       (local body [...])
-      (table.insert body res)
-      (list (sym :do)
-        (list (sym :var) res (sym :nil))
-        (table.unpack body)))
+      (` (do
+        (var (!` res) nil)
+        (!@ body)
+        (!` res))))
     (values wrap res body))
   :body (fn [res body]
     (local res_str (. res 1))
     (local body-len (# body))
     (tset body body-len
       (list (sym :set) res (. body body-len)))
-    (table.unpack body))
+    (unpack body))
 })
 
 (mk-iter-comps mac
@@ -293,42 +300,64 @@
         :sum :product
         :first :last])
 
+; match
+
+;(fn match-pat
+
+;(fn mac.match [val-expr ...]
+  ;(local clauses [...])
+
+
+; functions
+
+(fn define-args [args ...]
+  (local body [...])
+  (var optionals false)
+  (fn set-default [arg]
+    (local [a val] arg)
+    (list (sym :set-forcably!) a (list (sym :or) a val)))
+  (each [i arg (ipairs args)]
+    (if optionals
+      (do
+        (assert (table? arg) "define: no required arguments after optional")
+        (set optionals (+ 1 optionals))
+        (tset args i (. arg 1))
+        (table.insert body optionals (set-default arg)))
+      (when (table? arg)
+        (set optionals 1)
+        (tset args i (. arg 1))
+        (table.insert body optionals (set-default arg)))))
+  (values args (unpack body)))
+
+(fn define-fn [head body]
+  (if ; done
+      (sym? head)
+      (values head (fn [...]
+        (local b (body ...))
+        (table.insert b 2 head)
+        b))
+      ; lambda
+      (list? head)
+      (let [[new-head & args] head]
+        (define-fn
+          new-head
+          (fn [...] (body (list (sym :fn) (define-args args ...))))))))
+
+(fn mac.define [id ...]
+  (if ; variable
+      (sym? id)
+      (list (sym (or (and (multi-sym? (. id 1)) :set) :local)) id ...)
+      ; function
+      (list? id)
+      (let [(_head body) (define-fn id (fn [...] ...))]
+        (body ...))
+      ; other
+      (error "define: id must be symbol or list")))
+
 ; misc
 
-(defn mac.and-or [test t f]
-  (list (sym :or) (list (sym :and) test t) f))
+; core.macros.and-or
 
-(defn mac.require* [...]
-  (local names (list))
-  (local requires (list (sym :values)))
-  (each [_ spec (pairs [...])]
-    (if ; path, import as tail
-        (sym? spec)
-        (let [path (. spec 1)
-              path-parts (or (multi-sym? path) [path])
-              tail (. path-parts (# path-parts))]
-          (table.insert names (sym tail))
-          (table.insert requires (list (sym :require) path)))
-        ; typed spec
-        (and (list? spec))
-        (let [ty (. spec 1)
-              len (# spec)]
-          (assert (sym? ty) "require*: spec type must be a symbol")
-          (if ; rename, import as second arg
-              (= (. ty 1) :rename)
-              (do
-              (assert (= (% len 2) 1) "require*: rename needs pairs of paths and names")
-              (for [i 2 len 2]
-                (let [path (. spec i)
-                      name (. spec (+ 1 i))]
-                  (assert (sym? path) "require*: rename's paths must be symbols")
-                  (assert (sym? name) "require*: rename's names must be symbols")
-                  (table.insert names name)
-                  (table.insert requires (list (sym :require) (. path 1))))))
-              ; unknown typed spec type
-              (error "require*: unknown spec type")))
-        ; unknown require spec
-        (error "require*: unknown spec")))
-  (list (sym :local) names requires))
+; core.macros.require*
 
 mac
