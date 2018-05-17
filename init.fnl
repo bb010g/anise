@@ -244,6 +244,12 @@
     :count (and-or data (anise.dict_len data) 0)
   } anise.set_meta))
 
+;; standard table library functions with return values
+
+(define (anise.sort t f) (table.sort t f) t)
+(define (anise.insert t a b) (table.insert t a b) t)
+(define (anise.remove t i) (table.remove t i) t)
+
 ;; end
 
 anise
