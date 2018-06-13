@@ -23,7 +23,7 @@
           (table.insert names (sym tail))
           (table.insert requires (list (sym :require) path)))
         ; typed spec
-        (and (list? spec))
+        (list? spec)
         (let [ty (. spec 1)
               len (# spec)]
           (assert (sym? ty) "require*: spec type must be a symbol")
