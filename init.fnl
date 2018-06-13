@@ -49,17 +49,17 @@
 
 ;; iterators
 
-(define (anise.collect_keys iter)
+(define (anise.collect_keys ...)
   (each/array [k _ iter] k))
 
-(define (anise.collect_assocs iter)
-  (each/array [k v iter] [k v]))
+(define (anise.collect_assocs ...)
+  (each/array [k v ...] [k v]))
 
-(define (anise.collect_table iter)
-  (each/table [k v iter] [k v]))
+(define (anise.collect_table ...)
+  (each/table [k v ...] [k v]))
 
-(define (anise.collect_vals iter)
-  (each/array [_ v iter] v))
+(define (anise.collect_vals ...)
+  (each/array [_ v ...] v))
 
 ;; math
 
@@ -114,31 +114,41 @@
 
 (define (anise.gfind str pattern init plain)
   (define (iter s i)
-    (local (start end) (string.find s pattern i plain))
+    (local (start end) (string.find s pattern (+ i 1) plain))
     (values end start))
-  (values iter str 1))
+  (values iter str 0))
 
 (define (anise.pretty_float x)
   (if (= (% x 1) 0)
     (tostring (math.floor x))
     (tostring x)))
 
-(define (anise.split_str s pat plain)
+(define (anise.split_str_iter s pat plain)
   (local pat (or pat (and-or plain "%s+" " ")))
   (var last_end 1)
-  (local (arr i)
-    (each/array [end start (anise.gfind s pat plain)]
-      (set last_end end)
-      (string.sub s last_end start)))
-  (tset arr (+ 1 i) (string.sub last_end -1))
-  arr)
+  (define (iter s _)
+    (local (start end) (string.find s pat last_end plain))
+    (if (= last_end nil)
+        nil
+        (= end nil)
+        (let [part_start last_end
+              part_end (string.len s)]
+          (set last_end nil)
+          (values (string.sub s part_start part_end) part_start part_end))
+        ; else
+        (let [part_start last_end
+              part_end (- start 1)]
+          (set last_end (+ end 1))
+          (values (string.sub s part_start part_end) part_start part_end))))
+  (values iter s nil))
 
-(define (anise.trim s pat)
-  (local pat (or pat "%s*"))
+(define (anise.split_str s pat plain)
+  (each/array [p (anise.split_str_iter s pat plain)] p))
+
+(define (anise.trim s [pat "%s*"])
   (string.match s (f-str "^{pat}(.-){pat}$")))
 
-(define (anise.trim_left s pat)
-  (local pat (or pat "%s+"))
+(define (anise.trim_left s [pat "%s*"])
   (string.match s (f-str "^{pat}(.*)$")))
 
 ;; custom data structures

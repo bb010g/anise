@@ -315,7 +315,7 @@
   (var optionals false)
   (fn set-default [arg]
     (local [a val] arg)
-    (list (sym :set-forcably!) a (list (sym :or) a val)))
+    (list (sym :set-forcibly!) a (list (sym :or) a val)))
   (each [i arg (ipairs args)]
     (if optionals
       (do
