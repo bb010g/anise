@@ -24,6 +24,21 @@
 ; drops nils in the tables being concatenated
 ; (core.concat ...)
 
+(define (anise_move a1 [:mut f] e [:mut t] [a2 a1])
+  (local a2_len (# a2))
+  (when (<= t (+ a2_len 1))
+    (local a1_len (# a1))
+    (local tmp [])
+    (local tmp_len (math.min e a1_len))
+    (for [i 1 tmp_len]
+      (tset tmp i (. a1 f))
+      (set f (+ 1 f)))
+    (for [i 1 tmp_len]
+      (tset a2 i (. tmp t))
+      (set t (+ 1 t))))
+  a2)
+(define anise.move (or table.move anise_move))
+
 ;; dictionary tables
 
 ; (core.clone t)

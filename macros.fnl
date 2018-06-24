@@ -312,21 +312,41 @@
 
 (fn define-args [args ...]
   (local body [...])
+  (var ins 0)
+  (fn set-mutable [arg]
+    (local arg (. arg 1))
+    (` (eval-compiler
+      (when (not (. _SCOPE.symmeta (!` arg)))
+        (tset _SCOPE.symmeta (!` arg) {}))
+      (tset (. _SCOPE.symmeta (!` arg)) :var true))))
   (var optionals false)
   (fn set-default [arg]
     (local [a val] arg)
     (list (sym :set-forcibly!) a (list (sym :or) a val)))
   (each [i arg (ipairs args)]
+    (eval-compiler
+      (when (not _SCOPE.symmeta.arg)
+        (set _SCOPE.symmeta.arg {}))
+      (set _SCOPE.symmeta.arg.var true))
+    (when (= (. arg 1) :mut)
+      (table.remove arg 1)
+      (set ins (+ 1 ins))
+      (local name (. arg 1))
+      (table.insert body ins (set-mutable name))
+      (when (= (# arg) 1)
+        (set arg name)
+        (tset args i arg)))
     (if optionals
       (do
         (assert (table? arg) "define: no required arguments after optional")
-        (set optionals (+ 1 optionals))
+        (set ins (+ 1 ins))
         (tset args i (. arg 1))
-        (table.insert body optionals (set-default arg)))
+        (table.insert body ins (set-default arg)))
       (when (table? arg)
-        (set optionals 1)
+        (set optionals true)
+        (set ins (+ 1 ins))
         (tset args i (. arg 1))
-        (table.insert body optionals (set-default arg)))))
+        (table.insert body ins (set-default arg)))))
   (values args (unpack body)))
 
 (fn define-fn [head body]
