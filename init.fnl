@@ -50,7 +50,7 @@
 ;; iterators
 
 (define (anise.collect_keys ...)
-  (each/array [k _ iter] k))
+  (each/array [k _ ...] k))
 
 (define (anise.collect_assocs ...)
   (each/array [k v ...] [k v]))
@@ -60,6 +60,26 @@
 
 (define (anise.collect_vals ...)
   (each/array [_ v ...] v))
+
+(define (anise.filter_keys pred ...)
+  (each/array [k _ ...]
+    (if (not (pred k)) (luaexpr "continue"))
+    k))
+
+(define (anise.filter_assocs pred ...)
+  (each/array [k v ...]
+    (if (not (pred k v)) (luaexpr "continue"))
+    [k v]))
+
+(define (anise.filter_table pred ...)
+  (each/table [k v ...]
+    (if (not (pred k v)) (luaexpr "continue"))
+    [k v]))
+
+(define (anise.filter_vals pred ...)
+  (each/array [_ v ...]
+    (if (not (pred v)) (luaexpr "continue"))
+    v))
 
 ;; math
 
