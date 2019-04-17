@@ -153,7 +153,7 @@
     (local [coll i] data)
     (local body-len (# body))
     (tset body body-len
-      (list (sym :tset) coll i (. body body-len)))
+      (list (sym :rawset) coll i (. body body-len)))
     (values
       (` (set (!` i) (+ 1 (!` i))))
       (unpack body)))
@@ -174,7 +174,7 @@
     (assert (and (table? val) (= (# val) 2))
             "last body expression must be [k v]")
     (tset body body-len
-      (list (sym :tset) coll (. val 1) (. val 2)))
+      (list (sym :rawset) coll (. val 1) (. val 2)))
     (unpack body))
 })
 

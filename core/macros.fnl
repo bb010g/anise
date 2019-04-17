@@ -31,12 +31,15 @@
           (if ; rename, import as second arg
               (= ty :rename)
               (do
-              (assert (= (% len 2) 1) "require*: rename needs pairs of paths and names")
+              (assert (= (% len 2) 1)
+                      "require*: rename needs pairs of paths and names")
               (for [i 2 len 2]
                 (let [path (. spec i)
                       name (. spec (+ 1 i))]
-                  (assert (sym? path) "require*: rename's paths must be symbols")
-                  (assert (sym? name) "require*: rename's names must be symbols")
+                  (assert (sym? path)
+                          "require*: rename's paths must be symbols")
+                  (assert (sym? name)
+                          "require*: rename's names must be symbols")
                   (table.insert names name)
                   (table.insert requires (list (sym :require) (. path 1))))))
               ; macros, require and import like require-macros
